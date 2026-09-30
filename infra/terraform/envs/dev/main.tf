@@ -43,8 +43,9 @@ module "secrets" {
 }
 
 module "queue" {
-  source = "../../modules/queue"
-  name   = local.name
+  source      = "../../modules/queue"
+  name        = local.name
+  alert_email = var.alert_email
 }
 
 module "database" {
@@ -60,7 +61,7 @@ module "lambda_api" {
   name                    = local.name
   environment             = var.environment
   package_path            = var.package_path
-  subnet_ids              = module.network.public_subnet_ids
+  subnet_ids              = module.network.private_subnet_ids
   security_group_id       = module.network.lambda_security_group_id
   kms_key_id              = module.secrets.kms_key_id
   kms_key_arn             = module.secrets.kms_key_arn
@@ -68,7 +69,6 @@ module "lambda_api" {
   meta_app_secret_arn     = module.secrets.meta_app_secret_arn
   queue_url               = module.queue.queue_url
   queue_arn               = module.queue.queue_arn
-  aws_region              = var.aws_region
 }
 
 module "lambda_worker" {
@@ -76,7 +76,7 @@ module "lambda_worker" {
   name                    = local.name
   environment             = var.environment
   package_path            = var.package_path
-  subnet_ids              = module.network.public_subnet_ids
+  subnet_ids              = module.network.private_subnet_ids
   security_group_id       = module.network.lambda_security_group_id
   kms_key_id              = module.secrets.kms_key_id
   kms_key_arn             = module.secrets.kms_key_arn
@@ -84,7 +84,6 @@ module "lambda_worker" {
   meta_app_secret_arn     = module.secrets.meta_app_secret_arn
   queue_url               = module.queue.queue_url
   queue_arn               = module.queue.queue_arn
-  aws_region              = var.aws_region
 }
 
 module "lambda_migrate" {
@@ -92,13 +91,12 @@ module "lambda_migrate" {
   name                    = local.name
   environment             = var.environment
   package_path            = var.package_path
-  subnet_ids              = module.network.public_subnet_ids
+  subnet_ids              = module.network.private_subnet_ids
   security_group_id       = module.network.lambda_security_group_id
   kms_key_id              = module.secrets.kms_key_id
   database_url_secret_arn = module.database.database_url_secret_arn
   meta_app_secret_arn     = module.secrets.meta_app_secret_arn
   queue_url               = module.queue.queue_url
-  aws_region              = var.aws_region
 }
 
 module "bastion" {

@@ -1,8 +1,14 @@
-import secrets
-
 import httpx
 
 from wa_platform.core.config import Settings
+from wa_platform.core.logging import get_logger
+
+log = get_logger(__name__)
+
+# Free-form replies only work within 24h of the WhatsApp user's last message (SPEC: "24-hour
+# customer service window"); outside it Meta rejects the send with this code and a template is
+# required instead. Not implemented yet — logging it here at least makes the failure visible.
+OUTSIDE_SERVICE_WINDOW_ERROR_CODE = 131047
 
 
 class MetaGraphError(Exception):
@@ -40,28 +46,63 @@ class MetaGraphClient:
         if r.status_code != 200:
             raise MetaGraphError("subscribe failed", r)
 
-    async def register_number(self, phone_number_id: str, token: str) -> None:
+    async def list_phone_numbers(self, waba_id: str, token: str) -> list[str]:
+        """IDs of the phone numbers actually associated with this WABA, per the exchanged token.
+        Used to stop onboarding from accepting a phone_number_id the caller doesn't own — Meta's
+        own subscribe/register calls don't fail just because the caller supplied someone else's
+        ID (see api/routers/onboarding.py)."""
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.get(
+                f"{self._base}/{waba_id}/phone_numbers",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        if r.status_code != 200:
+            raise MetaGraphError("listing phone numbers failed", r)
+        return [item["id"] for item in r.json().get("data", [])]
+
+    async def register_number(self, phone_number_id: str, token: str, pin: str) -> None:
+        """`pin` sets the number's two-step-verification PIN. The caller persists it (encrypted)
+        since Meta never hands it back — it's needed again to re-register or migrate the number
+        later."""
         async with httpx.AsyncClient(timeout=20) as client:
             r = await client.post(
                 f"{self._base}/{phone_number_id}/register",
                 headers={"Authorization": f"Bearer {token}"},
-                json={"messaging_product": "whatsapp", "pin": secrets.token_hex(3)},
+                json={"messaging_product": "whatsapp", "pin": pin},
             )
         if r.status_code != 200:
             raise MetaGraphError("register failed", r)
 
     async def send(self, phone_number_id: str, token: str, payload: dict) -> httpx.Response | None:
         """Never raises — a network blip or Meta-side error here must not take down message
-        processing (SPEC §9); caller logs and moves on."""
+        processing (SPEC §9); caller logs and moves on. Logs the failure itself either way, since
+        nothing else would otherwise surface it (e.g. a reply sent outside the 24h service
+        window, Meta error code 131047)."""
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                return await client.post(
+            # Short timeout — this runs twice per inbound message (mark_read, send_text) inside
+            # the worker Lambda's budget alongside the tenant webhook's own 30s (SPEC §6). See
+            # infra/terraform/modules/lambda_worker for how the function timeout adds these up.
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(
                     f"{self._base}/{phone_number_id}/messages",
                     headers={"Authorization": f"Bearer {token}"},
                     json={"messaging_product": "whatsapp", **payload},
                 )
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            log.warning("meta_send_network_error", error=repr(exc))
             return None
+
+        if r.status_code != 200:
+            error_code = None
+            try:
+                error_code = r.json().get("error", {}).get("code")
+            except ValueError:
+                pass
+            if error_code == OUTSIDE_SERVICE_WINDOW_ERROR_CODE:
+                log.warning("meta_send_outside_service_window", phone_number_id=phone_number_id)
+            else:
+                log.warning("meta_send_failed", status=r.status_code, body=r.text[:500])
+        return r
 
     async def send_text(self, phone_number_id: str, token: str, to: str, body: str):
         return await self.send(

@@ -36,6 +36,7 @@ variable "queue_url" {
   type = string
 }
 
-variable "aws_region" {
-  type = string
+variable "log_retention_days" {
+  type    = number
+  default = 30
 }

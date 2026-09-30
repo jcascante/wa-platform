@@ -14,19 +14,24 @@ resource "random_password" "db" {
 }
 
 resource "aws_db_instance" "this" {
-  identifier              = "${var.name}-db"
-  engine                  = "postgres"
-  engine_version          = "16"
-  instance_class          = var.instance_class
-  allocated_storage       = 20
-  storage_type            = "gp3"
-  db_name                 = "platform"
-  username                = "platform"
-  password                = random_password.db.result
-  db_subnet_group_name    = aws_db_subnet_group.this.name
-  vpc_security_group_ids  = [var.db_security_group_id]
-  multi_az                = false
-  publicly_accessible     = false
+  identifier             = "${var.name}-db"
+  engine                 = "postgres"
+  engine_version         = "16"
+  instance_class         = var.instance_class
+  allocated_storage      = 20
+  storage_type           = "gp3"
+  db_name                = "platform"
+  username               = "platform"
+  password               = random_password.db.result
+  db_subnet_group_name   = aws_db_subnet_group.this.name
+  vpc_security_group_ids = [var.db_security_group_id]
+  multi_az               = false
+  publicly_accessible    = false
+  # Message bodies are personal data (SPEC §9). Default AWS-managed key — no need for the
+  # tenant-secrets KMS key here, this is a separate concern from column-level encryption.
+  # Can't be turned on for an existing unencrypted instance without a recreate, so this has to
+  # be right from the first apply.
+  storage_encrypted       = true
   skip_final_snapshot     = var.environment != "prod"
   deletion_protection     = var.environment == "prod"
   backup_retention_period = 7

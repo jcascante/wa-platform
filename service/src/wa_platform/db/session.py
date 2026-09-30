@@ -29,3 +29,12 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory(settings: Settings) -> sessionmaker:
+    """Lazily builds and caches the engine/sessionmaker (once per cold start). Used directly by
+    the worker Lambda handler, which manages its own Session per SQS record instead of going
+    through FastAPI's per-request get_db() — calling make_engine() per invocation instead (as it
+    used to) would open a fresh connection pool on every warm invocation and never close the old
+    one."""
+    return _init(settings)

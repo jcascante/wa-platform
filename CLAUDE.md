@@ -101,8 +101,10 @@ see `infra/terraform/README.md`.
 `bootstrap/` (remote state storage — S3, with S3's native lockfile locking, applied once
 manually, never touched again), `envs/<name>/` per environment (currently `dev`), shared
 modules under `modules/`:
-`network` (NAT-free VPC — Lambda in public subnets with outbound-only SG, RDS in private
-subnets), `database` (single-AZ `db.t4g.micro` Postgres — cheapest managed option, explicit
+`network` (VPC with public subnets for the bastion and private subnets — behind one NAT
+gateway — for Lambda + RDS; Lambda-in-VPC never gets a public IP on its ENI, so NAT is the only
+way to give it internet access without pulling it out of the VPC), `database` (single-AZ
+`db.t4g.micro` Postgres, storage-encrypted — cheapest managed option, explicit
 upgrade path noted for Multi-AZ/RDS Proxy), `queue` (plain SQS + DLQ, no broker), `secrets`
 (the KMS key + the Meta-app Secrets Manager entry), `lambda_api`, `lambda_worker`,
 `lambda_migrate` (runs `alembic upgrade head` from inside the VPC — CI can't reach RDS

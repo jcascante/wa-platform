@@ -40,6 +40,12 @@ resource "aws_iam_role_policy" "inline" {
   policy = data.aws_iam_policy_document.inline.json
 }
 
+# See modules/lambda_api for why this is created explicitly instead of left to auto-create.
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/lambda/${var.name}-migrate"
+  retention_in_days = var.log_retention_days
+}
+
 resource "aws_lambda_function" "this" {
   function_name    = "${var.name}-migrate"
   role             = aws_iam_role.this.arn
@@ -62,7 +68,10 @@ resource "aws_lambda_function" "this" {
       META_APP_SECRET_ARN = var.meta_app_secret_arn
       KMS_KEY_ID          = var.kms_key_id
       SQS_QUEUE_URL       = var.queue_url
-      AWS_REGION          = var.aws_region
+      # AWS_REGION is a reserved Lambda env var name (Terraform apply fails if you set it) — the
+      # runtime injects it automatically, and Settings.aws_region already defaults from it.
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.this]
 }

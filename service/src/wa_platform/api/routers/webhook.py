@@ -42,7 +42,7 @@ async def webhook(request: Request, settings: Settings = Depends(get_settings)):
             if field == "messages":
                 phone_number_id = value.get("metadata", {}).get("phone_number_id")
                 for msg in value.get("messages", []):
-                    queue.enqueue(phone_number_id, msg)
+                    queue.enqueue(phone_number_id, "message", msg)
             elif field == "account_update":
-                queue.enqueue(entry.get("id"), {"type": "account_update", "value": value})
+                queue.enqueue(entry.get("id"), "account_update", value)
     return {"ok": True}

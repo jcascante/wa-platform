@@ -11,6 +11,11 @@ from wa_platform.core.config import Settings
 
 _hasher = PasswordHasher()
 
+# Computed once so an unknown-email login still pays the same argon2 cost as a real one —
+# without this, the "no such user" branch returns before hashing anything and the response
+# time itself tells an attacker which emails are registered.
+DUMMY_PASSWORD_HASH = PasswordHasher().hash(secrets.token_urlsafe(32))
+
 
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
@@ -25,6 +30,14 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def new_api_key() -> str:
     return secrets.token_urlsafe(32)
+
+
+def hash_api_key(api_key: str) -> str:
+    """Lookup/verification hash for API keys, stored in place of the plaintext (users.api_key_hash).
+    Unlike passwords, a 256-bit random token doesn't need a slow salted hash to resist brute force —
+    a fast digest keeps auth cheap on every request, and equality-lookup by hash is safe at this
+    entropy."""
+    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 def new_webhook_secret() -> str:

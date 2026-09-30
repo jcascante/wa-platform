@@ -11,9 +11,7 @@ async def test_subscribe_app_against_real_waba(live_client: MetaGraphClient):
     """Confirms our app can subscribe to the test WABA with the current token/permission set —
     this is the step most likely to break silently if a Meta permission lapses or the Graph
     API version we're pinned to (GRAPH_VERSION) changes this endpoint's shape."""
-    await live_client.subscribe_app(
-        os.environ["META_TEST_WABA_ID"], os.environ["META_TEST_ACCESS_TOKEN"]
-    )
+    await live_client.subscribe_app(os.environ["META_TEST_WABA_ID"], os.environ["META_TEST_ACCESS_TOKEN"])
 
 
 async def test_send_text_against_real_number(live_client: MetaGraphClient):

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, HttpUrl, field_validator
 
+from wa_platform.core.ssrf_guard import UnsafeWebhookHost, assert_public_host
+
 
 class OnboardingIn(BaseModel):
     code: str
@@ -31,6 +33,14 @@ class WebhookIn(BaseModel):
         # SPEC §9: tenant webhook_url was unvalidated in the prototype — enforce https here.
         if v.scheme != "https":
             raise ValueError("webhook url must use https")
+        if v.host is None:
+            raise ValueError("webhook url must have a host")
+        # Catches the obvious SSRF case at set-time; the check that actually matters runs again
+        # right before every forward (workers/message_processor.py) since DNS can change later.
+        try:
+            assert_public_host(v.host)
+        except UnsafeWebhookHost as exc:
+            raise ValueError(str(exc)) from exc
         return v
 
 

@@ -18,3 +18,9 @@ variable "github_repo" {
   type        = string
   description = "owner/repo for the GitHub OIDC deploy role trust policy, e.g. \"acme/wa-platform\""
 }
+
+variable "alert_email" {
+  type        = string
+  default     = null
+  description = "If set, subscribed to an alarm that fires when a message lands in the worker's DLQ."
+}

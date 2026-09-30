@@ -43,6 +43,12 @@ variable "queue_arn" {
   type = string
 }
 
-variable "aws_region" {
-  type = string
+variable "reserved_concurrent_executions" {
+  type    = number
+  default = 10
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 30
 }

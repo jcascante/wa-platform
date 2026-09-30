@@ -1,7 +1,13 @@
-# Minimal VPC: 2 public subnets (NAT-free) for Lambda egress to Meta's Graph API and tenant
-# webhooks, 2 private subnets for RDS. No NAT gateway — Lambda functions run in the public
-# subnets with a security group that only allows outbound, keeping cost near zero for v1.
-# Add a NAT gateway + move Lambda to private subnets once inbound-from-VPC traffic is needed.
+# Minimal VPC: 2 public subnets (IGW route, used only by the bastion — the one thing here that
+# actually gets a public IP), 2 private subnets for Lambda + RDS behind a NAT gateway.
+#
+# Lambda functions attached to a VPC never get a public IP on their ENI, even when placed in a
+# subnet whose route table points at an internet gateway — the IGW can only NAT traffic for
+# resources that have one. So Lambda-in-VPC needs a NAT gateway for any outbound call (Secrets
+# Manager, KMS, SQS, the Meta Graph API, tenant webhooks) regardless of which subnet it sits in;
+# there's no cheaper way to keep it in the VPC. One NAT gateway (not one per AZ) to halve the
+# ~$32/mo fixed cost, at the price of an AZ-level single point of failure for Lambda egress —
+# revisit (one NAT per AZ) once cross-AZ redundancy actually matters.
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -49,6 +55,33 @@ resource "aws_route_table_association" "public" {
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
+}
+
+resource "aws_eip" "nat" {
+  domain = "vpc"
+  tags   = { Name = "${var.name}-nat" }
+}
+
+resource "aws_nat_gateway" "this" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+  tags          = { Name = "${var.name}-nat" }
+  depends_on    = [aws_internet_gateway.this]
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.this.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.this.id
+  }
+  tags = { Name = "${var.name}-private-rt" }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
 resource "aws_security_group" "lambda" {

@@ -42,6 +42,14 @@ variable "queue_arn" {
   type = string
 }
 
-variable "aws_region" {
-  type = string
+variable "reserved_concurrent_executions" {
+  type = number
+  # Matched to a fraction of db.t4g.micro's connection budget, shared with lambda_api — the
+  # worker also opens KMS/tenant-webhook calls per invocation, so it gets a smaller slice.
+  default = 5
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 30
 }

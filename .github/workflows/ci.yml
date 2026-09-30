@@ -5,12 +5,34 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   service:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: service
+    # Some worker logic is Postgres-dialect-specific (the on_conflict_do_nothing dedupe insert in
+    # workers/message_processor.py) and can't be exercised against the default in-memory SQLite
+    # fixture — tests/integration/conftest.py's `pg_db` fixture needs a real Postgres to run
+    # against instead of skipping. Same credentials as docker-compose.yml so `make up && make
+    # test` matches CI.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: platform
+          POSTGRES_DB: platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U platform"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

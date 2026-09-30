@@ -5,11 +5,15 @@ Terraform. `bootstrap/` (remote state storage, applied once), `envs/<name>/` per
 
 ## What this deploys (dev)
 
-- **network** — a NAT-free VPC: Lambdas run in public subnets (outbound-only security group),
-  RDS sits in private subnets reachable only from the Lambda security group (and the bastion).
-- **database** — single-AZ RDS Postgres `db.t4g.micro`. Cheapest managed Postgres; move to
-  Multi-AZ / a bigger class / add RDS Proxy once real traffic justifies the cost.
-- **queue** — one SQS queue + DLQ (5 receives before dead-lettering). No broker to run.
+- **network** — a VPC with 2 public subnets (bastion only — the one thing here with a public IP)
+  and 2 private subnets (Lambda + RDS) behind a single NAT gateway. Lambda-in-VPC never gets a
+  public IP on its ENI even in a public subnet, so a NAT gateway is the only way to keep it in
+  the VPC with real internet access (Secrets Manager, KMS, SQS, Meta, tenant webhooks) — one
+  gateway, not one per AZ, to halve the ~$32/mo fixed cost.
+- **database** — single-AZ RDS Postgres `db.t4g.micro`, storage-encrypted. Cheapest managed
+  Postgres; move to Multi-AZ / a bigger class / add RDS Proxy once real traffic justifies the cost.
+- **queue** — one SQS queue + DLQ (5 receives before dead-lettering). No broker to run. Optional
+  CloudWatch alarm + SNS email subscription on the DLQ (set `alert_email` in tfvars).
 - **secrets** — one KMS key (tenant secret encryption) + one Secrets Manager secret for the
   Meta app credentials.
 - **lambda_api** — API Gateway HTTP API → Lambda running the FastAPI app via Mangum.
@@ -58,8 +62,11 @@ terraform apply
 
 Then, in the GitHub repo: **Settings → Environments → New environment → `production`**, add
 required reviewers (this is what gates the OIDC role — see `modules/github_oidc`). **Settings →
-Secrets and variables → Actions → Variables**, add `AWS_DEPLOY_ROLE_ARN` = the
-`github_deploy_role_arn` output from the apply above (and `AWS_REGION` if not `us-east-1`).
+Secrets and variables → Actions → Variables**, add:
+- `AWS_DEPLOY_ROLE_ARN` = the `github_deploy_role_arn` output from the apply above
+- `TF_STATE_BUCKET` = the bucket name from bootstrap step 1 (CI can't read the gitignored
+  `backend.hcl`, so the Deploy workflow passes backend config as CLI flags from this instead)
+- `AWS_REGION` if not `us-east-1`
 
 Populate the Meta app credentials (Terraform intentionally does not manage these — see SPEC §7
 for where they come from):
@@ -73,8 +80,9 @@ aws secretsmanager put-secret-value \
 Run the first migration (see "Running migrations" below).
 
 **3. From here on**, run the **Deploy** workflow (Actions tab → Deploy → Run workflow) for any
-infra or app change — it builds the package, plans, applies, and runs migrations. See
-`.github/workflows/deploy.yml`.
+infra or app change — it builds the package, deploys and runs the migration Lambda *first*
+(new app code may depend on the schema change it makes), then plans and applies everything
+else. See `.github/workflows/deploy.yml`.
 
 ## Running migrations
 

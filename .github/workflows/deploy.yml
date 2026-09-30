@@ -52,9 +52,31 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
+      # backend.hcl is gitignored (it's environment-specific, see backend.hcl.example) so it
+      # can't be checked out here — passed as CLI flags from repo/environment variables instead.
       - name: Terraform init
         working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
-        run: terraform init -input=false -backend-config=backend.hcl
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ inputs.terraform_env }}/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="encrypt=true"
+
+      # Migrations run before the rest of the apply, not after: new application code can depend
+      # on a column/table the migration adds, so deploying that code first (the old ordering)
+      # briefly ran it against the old schema. -target only touches lambda_migrate and what it
+      # depends on (network/secrets/database/queue), not lambda_api/lambda_worker.
+      - name: Deploy migration Lambda and run migrations
+        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var="github_repo=${{ github.repository }}" \
+            -target=module.lambda_migrate
+          fn=$(terraform output -raw migrate_function_name)
+          aws lambda invoke --function-name "$fn" --payload '{}' --cli-binary-format raw-in-base64-out /tmp/migrate-out.json
+          cat /tmp/migrate-out.json
+          grep -q '"ok": true' /tmp/migrate-out.json
 
       - name: Terraform plan
         working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
@@ -67,14 +89,3 @@ jobs:
       - name: Terraform apply
         working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
         run: terraform apply -input=false -auto-approve tfplan
-
-      # `terraform apply` above already pushed the new code: each aws_lambda_function's
-      # source_code_hash is wired to the zip we just built, so a changed hash updates the
-      # function as part of apply — no separate `aws lambda update-function-code` needed.
-      - name: Run database migrations
-        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
-        run: |
-          fn=$(terraform output -raw migrate_function_name)
-          aws lambda invoke --function-name "$fn" --payload '{}' --cli-binary-format raw-in-base64-out /tmp/migrate-out.json
-          cat /tmp/migrate-out.json
-          grep -q '"ok": true' /tmp/migrate-out.json

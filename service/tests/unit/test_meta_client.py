@@ -52,9 +52,29 @@ async def test_subscribe_app_raises_on_failure(client: MetaGraphClient):
 @respx.mock
 async def test_register_number_sends_pin(client: MetaGraphClient):
     route = respx.post(f"{client._base}/phone-1/register").mock(return_value=httpx.Response(200))
-    await client.register_number("phone-1", "token")
+    await client.register_number("phone-1", "token", "123456")
     assert route.called
-    assert b"messaging_product" in route.calls[0].request.content
+    import json
+
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["messaging_product"] == "whatsapp"
+    assert sent["pin"] == "123456"
+
+
+@respx.mock
+async def test_list_phone_numbers_returns_ids(client: MetaGraphClient):
+    respx.get(f"{client._base}/waba-123/phone_numbers").mock(
+        return_value=httpx.Response(200, json={"data": [{"id": "phone-1"}, {"id": "phone-2"}]})
+    )
+    ids = await client.list_phone_numbers("waba-123", "token")
+    assert ids == ["phone-1", "phone-2"]
+
+
+@respx.mock
+async def test_list_phone_numbers_raises_on_failure(client: MetaGraphClient):
+    respx.get(f"{client._base}/waba-123/phone_numbers").mock(return_value=httpx.Response(403))
+    with pytest.raises(MetaGraphError, match="listing phone numbers failed"):
+        await client.list_phone_numbers("waba-123", "token")
 
 
 @respx.mock

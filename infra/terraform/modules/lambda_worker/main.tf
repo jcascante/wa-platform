@@ -48,15 +48,25 @@ resource "aws_iam_role_policy" "inline" {
   policy = data.aws_iam_policy_document.inline.json
 }
 
+# See modules/lambda_api for why this is created explicitly instead of left to auto-create.
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/lambda/${var.name}-worker"
+  retention_in_days = var.log_retention_days
+}
+
 resource "aws_lambda_function" "this" {
-  function_name    = "${var.name}-worker"
-  role             = aws_iam_role.this.arn
-  handler          = "wa_platform.lambda_handlers.worker_handler.handler"
-  runtime          = "python3.12"
-  timeout          = 45 # > tenant webhook call's own 30s budget
-  memory_size      = 256
-  filename         = var.package_path
-  source_code_hash = filebase64sha256(var.package_path)
+  function_name = "${var.name}-worker"
+  role          = aws_iam_role.this.arn
+  handler       = "wa_platform.lambda_handlers.worker_handler.handler"
+  runtime       = "python3.12"
+  # Per-message worst case: mark_read (10s) + the tenant webhook's own 30s budget (SPEC §6) +
+  # send_text (10s) ≈ 50s. 75s leaves headroom; batch_size=1 below means this is a per-message
+  # budget, not per-batch — see integrations/meta/client.py for the call timeouts this adds up.
+  timeout                        = 75
+  memory_size                    = 256
+  filename                       = var.package_path
+  source_code_hash               = filebase64sha256(var.package_path)
+  reserved_concurrent_executions = var.reserved_concurrent_executions
 
   vpc_config {
     subnet_ids         = var.subnet_ids
@@ -70,14 +80,22 @@ resource "aws_lambda_function" "this" {
       META_APP_SECRET_ARN = var.meta_app_secret_arn
       KMS_KEY_ID          = var.kms_key_id
       SQS_QUEUE_URL       = var.queue_url
-      AWS_REGION          = var.aws_region
+      # AWS_REGION is a reserved Lambda env var name (Terraform apply fails if you set it) — the
+      # runtime injects it automatically, and Settings.aws_region already defaults from it.
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.this]
 }
 
 resource "aws_lambda_event_source_mapping" "sqs" {
-  event_source_arn        = var.queue_arn
-  function_name           = aws_lambda_function.this.arn
-  batch_size              = 5
+  event_source_arn = var.queue_arn
+  function_name    = aws_lambda_function.this.arn
+  # 1 message per invocation, not 5: at up to ~50s per message (see the function timeout above),
+  # a batch of 5 processed sequentially could exceed the function timeout — and on a timeout AWS
+  # discards the partial-batch-failure report and retries the *entire* batch, which combined with
+  # the worker's dedupe-then-process ordering would silently drop the messages that had already
+  # succeeded. One message per invocation keeps each invocation's worst case inside the timeout.
+  batch_size              = 1
   function_response_types = ["ReportBatchItemFailures"]
 }
