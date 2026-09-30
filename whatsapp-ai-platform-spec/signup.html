@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<body>
+<button id="connect">Connect WhatsApp</button>
+
+<script>
+  // Fill these from your Meta app. Verify current parameters against the Embedded Signup (v4) docs.
+  const APP_ID = "YOUR_APP_ID";
+  const CONFIG_ID = "YOUR_EMBEDDED_SIGNUP_CONFIG_ID"; // Facebook Login for Business configuration
+  const GRAPH_VERSION = "v23.0";
+  const TENANT_ID = "tenant-123"; // your logged-in customer
+
+  let sessionInfo = null; // {waba_id, phone_number_id} arrives via postMessage
+  let authCode = null;
+
+  window.fbAsyncInit = function () {
+    FB.init({ appId: APP_ID, autoLogAppEvents: true, xfbml: true, version: GRAPH_VERSION });
+  };
+
+  window.addEventListener("message", (event) => {
+    if (!event.origin.endsWith("facebook.com")) return;
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "WA_EMBEDDED_SIGNUP" && data.event === "FINISH") {
+        sessionInfo = data.data; // includes phone_number_id and waba_id
+        maybeComplete();
+      }
+    } catch (_) {}
+  });
+
+  document.getElementById("connect").onclick = () => {
+    FB.login(
+      (response) => {
+        if (response.authResponse) {
+          authCode = response.authResponse.code;
+          maybeComplete();
+        }
+      },
+      {
+        config_id: CONFIG_ID,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: { setup: {}, sessionInfoVersion: "3" },
+        // For existing WhatsApp Business app numbers (coexistence), check the docs for the
+        // featureType value to pass in extras.
+      }
+    );
+  };
+
+  async function maybeComplete() {
+    if (!authCode || !sessionInfo) return; // need both the code and the session info
+    await fetch("/onboarding/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        code: authCode,
+        waba_id: sessionInfo.waba_id,
+        phone_number_id: sessionInfo.phone_number_id,
+      }),
+    });
+    alert("WhatsApp connected");
+  }
+</script>
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+</body>
+</html>

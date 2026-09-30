@@ -1,0 +1,80 @@
+name: Deploy
+
+# Manual only (Recommended per team decision): a bad terraform apply against real AWS
+# resources (RDS, IAM) is not cheaply reversible, so this never fires on a bare push — someone
+# explicitly runs it, and the `production` GitHub Environment's required reviewers (configure
+# this in repo Settings -> Environments) get a chance to approve before AWS credentials are
+# even issued. The OIDC trust policy (infra/terraform/modules/github_oidc) is scoped to the
+# same environment name, so the role literally cannot be assumed without that approval.
+on:
+  workflow_dispatch:
+    inputs:
+      terraform_env:
+        description: "infra/terraform/envs/<name> to deploy"
+        required: true
+        default: dev
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install service deps and run the same checks CI runs on every PR
+        working-directory: service
+        run: |
+          pip install -e ".[dev]"
+          ruff check src tests
+          mypy
+          pytest
+
+      - name: Build Lambda deployment package
+        working-directory: service
+        run: make package
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Terraform init
+        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Terraform plan
+        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
+        run: terraform plan -input=false -var="github_repo=${{ github.repository }}" -out=tfplan
+
+      # No separate approval gate here beyond the `environment: production` one above — this
+      # is intentionally the same workflow run, so the human who approved the job also
+      # implicitly approves the plan that follows from it. Revisit if that stops being enough
+      # (e.g. add a second `environment:` with its own reviewers gating just this step).
+      - name: Terraform apply
+        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      # `terraform apply` above already pushed the new code: each aws_lambda_function's
+      # source_code_hash is wired to the zip we just built, so a changed hash updates the
+      # function as part of apply — no separate `aws lambda update-function-code` needed.
+      - name: Run database migrations
+        working-directory: infra/terraform/envs/${{ inputs.terraform_env }}
+        run: |
+          fn=$(terraform output -raw migrate_function_name)
+          aws lambda invoke --function-name "$fn" --payload '{}' --cli-binary-format raw-in-base64-out /tmp/migrate-out.json
+          cat /tmp/migrate-out.json
+          grep -q '"ok": true' /tmp/migrate-out.json

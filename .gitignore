@@ -1,0 +1,29 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Service local dev
+service/.env
+service/wa.db
+service/*.log
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+crash.log
+
+# Prototype (whatsapp-ai-platform-spec/)
+whatsapp-ai-platform-spec/wa.db
+whatsapp-ai-platform-spec/*.log
+whatsapp-ai-platform-spec/*.pid

@@ -1,0 +1,5 @@
+bucket         = "wa-platform-tfstate-<your-suffix>"   # from bootstrap's state_bucket_name output
+key            = "dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "wa-platform-tfstate-<your-suffix>-lock"   # from bootstrap's lock_table_name output
+encrypt        = true

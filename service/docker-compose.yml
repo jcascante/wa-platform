@@ -1,0 +1,23 @@
+# Local dev parity only — production runs on RDS + SQS via Terraform (see infra/).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+      POSTGRES_DB: platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Emulates SQS + KMS locally so `make dev` doesn't need real AWS credentials.
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: sqs,kms
+    ports:
+      - "4566:4566"
+
+volumes:
+  pgdata:
