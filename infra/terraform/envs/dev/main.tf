@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.9"
+  required_version = ">= 1.10" # S3 native locking (use_lockfile) needs 1.10+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -8,14 +8,24 @@ terraform {
   }
 
   # Remote state is required here, not optional: the deploy workflow runs on ephemeral GitHub
-  # Actions runners, so state can't live on a runner's local disk between runs. Bucket/table
-  # come from infra/terraform/bootstrap/ (applied once, manually — see its README section).
-  # Partial config: values supplied via `-backend-config=backend.hcl` (see backend.hcl.example).
-  backend "s3" {}
+  # Actions runners, so state can't live on a runner's local disk between runs. Bucket comes
+  # from infra/terraform/bootstrap/ (applied once, manually — see its README section). Locking
+  # is S3's native conditional-write lockfile, not DynamoDB. Partial config: bucket/key/region
+  # supplied via `-backend-config=backend.hcl` (see backend.hcl.example).
+  backend "s3" {
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = {
+      app_name = "wa-platform"
+      env      = var.environment
+    }
+  }
 }
 
 locals {

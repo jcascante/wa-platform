@@ -1,11 +1,13 @@
-# Creates the S3 bucket + DynamoDB lock table that envs/*/main.tf's S3 backend points at.
+# Creates the S3 bucket that envs/*/main.tf's S3 backend points at. Locking uses S3's native
+# conditional-write lockfile (Terraform >= 1.10), not DynamoDB — HashiCorp's now-recommended
+# approach, no separate lock table to pay for or manage.
 # Run once, manually, by a human with real AWS credentials — a backend's own storage can't be
 # managed by Terraform configured to use that backend (chicken-and-egg), so this stays on
 # local state permanently and is never touched again after the first apply. See
 # infra/terraform/README.md for the full bootstrap sequence (this is step 1 of 3).
 
 terraform {
-  required_version = ">= 1.9"
+  required_version = ">= 1.10"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -16,6 +18,13 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = {
+      app_name = "wa-platform"
+      env      = "shared" # state bucket backs every env, not just one
+    }
+  }
 }
 
 resource "aws_s3_bucket" "state" {
@@ -48,15 +57,4 @@ resource "aws_s3_bucket_public_access_block" "state" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-resource "aws_dynamodb_table" "lock" {
-  name         = "${var.state_bucket_name}-lock"
-  billing_mode = "PAY_PER_REQUEST" # no idle cost — table sees a handful of requests per apply
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
 }

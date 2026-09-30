@@ -33,8 +33,9 @@ Remote state is required, not optional, once CI deploys: GitHub Actions runners 
 so state can't live on a runner's disk between runs. Steps 1–2 are manual, run once by a human
 with real AWS credentials; CI takes over from step 3 onward.
 
-**1. Create the state bucket + lock table** (its own local-state config — a backend's storage
-can't be managed by Terraform configured to use that backend):
+**1. Create the state bucket** (its own local-state config — a backend's storage can't be
+managed by Terraform configured to use that backend). Locking is S3's native lockfile
+(conditional writes, Terraform >= 1.10) — no DynamoDB table:
 
 ```
 cd infra/terraform/bootstrap
@@ -46,7 +47,7 @@ terraform apply -var="state_bucket_name=wa-platform-tfstate-<pick-a-unique-suffi
 
 ```
 cd ../envs/dev
-cp backend.hcl.example backend.hcl          # fill in the bucket/table names from step 1
+cp backend.hcl.example backend.hcl          # fill in the bucket name from step 1
 cp terraform.tfvars.example terraform.tfvars  # fill in github_repo = "owner/repo"
 terraform init -backend-config=backend.hcl
 
@@ -101,8 +102,9 @@ Stop the bastion when not in use — it costs nothing idle beyond ~$1/mo of EBS 
 
 ## State
 
-S3 + DynamoDB (see bootstrap above). `envs/dev/main.tf`'s `backend "s3" {}` block is partial
-config — real values live in the gitignored `backend.hcl`, not committed (see
+S3, with native S3 locking (`use_lockfile = true`, Terraform >= 1.10) — no DynamoDB table (see
+bootstrap above). `envs/dev/main.tf`'s `backend "s3" { use_lockfile = true }` block is partial
+config — bucket/key/region live in the gitignored `backend.hcl`, not committed (see
 `backend.hcl.example`).
 
 ## Why Lambda over ECS/Fargate

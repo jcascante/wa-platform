@@ -98,8 +98,9 @@ see `infra/terraform/README.md`.
 
 ## Infrastructure (`infra/terraform/`)
 
-`bootstrap/` (remote state storage — S3 + DynamoDB, applied once manually, never touched
-again), `envs/<name>/` per environment (currently `dev`), shared modules under `modules/`:
+`bootstrap/` (remote state storage — S3, with S3's native lockfile locking, applied once
+manually, never touched again), `envs/<name>/` per environment (currently `dev`), shared
+modules under `modules/`:
 `network` (NAT-free VPC — Lambda in public subnets with outbound-only SG, RDS in private
 subnets), `database` (single-AZ `db.t4g.micro` Postgres — cheapest managed option, explicit
 upgrade path noted for Multi-AZ/RDS Proxy), `queue` (plain SQS + DLQ, no broker), `secrets`
