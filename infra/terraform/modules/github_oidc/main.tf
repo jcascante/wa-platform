@@ -4,20 +4,13 @@
 # approval configured on that environment, so this role is only assumable after a human clicks
 # approve.
 #
-# Thumbprint is fetched live from GitHub's OIDC endpoint rather than hardcoded: GitHub has
-# rotated this certificate before (2023), which silently breaks a hardcoded thumbprint until
-# someone notices deploys failing. AWS also doesn't actually validate the thumbprint against
-# the presented cert for well-known OIDC providers like this one — it's a required argument
-# that's effectively vestigial — so fetching it live costs nothing and removes a staleness trap.
+# The OIDC provider for a given URL is an account-wide singleton — AWS rejects a second
+# provider at the same URL, so this looks up the existing one instead of creating it. Any other
+# workload in this account that already deploys from GitHub Actions will have created it first;
+# this module never owns its lifecycle, so it's unaffected by that workload's state or destroy.
 
-data "tls_certificate" "github" {
+data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
-}
-
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
 }
 
 data "aws_iam_policy_document" "assume" {
@@ -25,7 +18,7 @@ data "aws_iam_policy_document" "assume" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
     condition {
       test     = "StringEquals"

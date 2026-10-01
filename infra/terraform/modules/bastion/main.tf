@@ -60,7 +60,7 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_bastion" {
   to_port                      = 5432
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.this.id
-  description                  = "bastion -> RDS, for SSM port-forward (psql, ad-hoc queries)"
+  description                  = "bastion to RDS, for SSM port-forward (psql, ad-hoc queries)"
 }
 
 resource "aws_instance" "this" {

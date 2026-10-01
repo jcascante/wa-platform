@@ -8,6 +8,9 @@ class OnboardingIn(BaseModel):
     waba_id: str
     phone_number_id: str
     coexistence: bool = False
+    # Must match the URL of the page that called FB.login, or Meta's code exchange fails with
+    # OAuthException 36008 — the JS SDK ties the code to that page as its implicit redirect_uri.
+    redirect_uri: str = ""
 
 
 class OnboardingOut(BaseModel):

@@ -43,8 +43,9 @@ managed by Terraform configured to use that backend). Locking is S3's native loc
 
 ```
 cd infra/terraform/bootstrap
+cp terraform.tfvars.example terraform.tfvars  # fill in state_bucket_name
 terraform init
-terraform apply -var="state_bucket_name=wa-platform-tfstate-<pick-a-unique-suffix>"
+terraform apply
 ```
 
 **2. First apply of `envs/dev`**, from your own machine:

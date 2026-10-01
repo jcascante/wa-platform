@@ -1,10 +1,15 @@
-.PHONY: install dev test test-live lint typecheck fmt migrate migration up down package
+.PHONY: install dev worker test test-live lint typecheck fmt migrate migration up down package
 
 install:
 	pip install -e ".[dev]"
 
 dev:
 	uvicorn wa_platform.api.app:app --reload --port 8000 --app-dir src
+
+# Drains the local SQS queue the same way the worker Lambda drains the real one in AWS — run
+# alongside `make dev` to exercise /webhook -> SQS -> tenant-webhook end to end locally.
+worker:
+	PYTHONPATH=src python scripts/local_worker.py
 
 test:
 	pytest
@@ -32,6 +37,7 @@ migration:
 
 up:
 	docker compose up -d
+	./scripts/localstack_bootstrap.sh
 
 down:
 	docker compose down

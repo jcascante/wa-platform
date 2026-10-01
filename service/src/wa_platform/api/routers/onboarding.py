@@ -30,7 +30,7 @@ async def onboarding_complete(
     client = MetaGraphClient(settings)
     pin = secrets.token_hex(3)
     try:
-        token = await client.exchange_code(body.code)
+        token = await client.exchange_code(body.code, body.redirect_uri)
         # The exchanged token only proves the caller went through Embedded Signup for *some*
         # WABA — without this check they could name any waba_id/phone_number_id in the request
         # body and claim a number that isn't theirs (see the tenant-isolation-reviewer note in
@@ -44,7 +44,12 @@ async def onboarding_complete(
     except MetaGraphError as exc:
         # Meta's raw response can contain account/token details — log it, don't hand it to the
         # client.
-        log.warning("onboarding_meta_error", error=str(exc), status=exc.response.status_code)
+        log.warning(
+            "onboarding_meta_error",
+            error=str(exc),
+            status=exc.response.status_code,
+            body=exc.response.text[:500],
+        )
         raise HTTPException(400, "failed to connect WhatsApp number, please try again") from exc
 
     encrypted_token = await run_in_threadpool(encryptor.encrypt, token)

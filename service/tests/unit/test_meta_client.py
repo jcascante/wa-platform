@@ -25,7 +25,7 @@ def client(settings: Settings) -> MetaGraphClient:
 
 @respx.mock
 async def test_exchange_code_returns_access_token(client: MetaGraphClient):
-    route = respx.get(f"{client._base}/oauth/access_token").mock(
+    route = respx.post(f"{client._base}/oauth/access_token").mock(
         return_value=httpx.Response(200, json={"access_token": "long-lived-token"})
     )
     token = await client.exchange_code("auth-code")
@@ -35,7 +35,7 @@ async def test_exchange_code_returns_access_token(client: MetaGraphClient):
 
 @respx.mock
 async def test_exchange_code_raises_on_non_200(client: MetaGraphClient):
-    respx.get(f"{client._base}/oauth/access_token").mock(
+    respx.post(f"{client._base}/oauth/access_token").mock(
         return_value=httpx.Response(400, json={"error": {"message": "invalid code"}})
     )
     with pytest.raises(MetaGraphError, match="token exchange failed"):

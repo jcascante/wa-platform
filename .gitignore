@@ -13,6 +13,9 @@ service/.env
 service/wa.db
 service/*.log
 
+# Real Meta app credentials, scratch notes — never committed
+.meta
+
 # Terraform
 **/.terraform/
 *.tfstate

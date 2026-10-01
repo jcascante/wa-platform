@@ -27,11 +27,21 @@ class MetaGraphClient:
         self._app_secret = settings.meta_app_secret
         self._token = token
 
-    async def exchange_code(self, code: str) -> str:
+    async def exchange_code(self, code: str, redirect_uri: str = "") -> str:
         async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(
+            r = await client.post(
                 f"{self._base}/oauth/access_token",
-                params={"client_id": self._app_id, "client_secret": self._app_secret, "code": code},
+                # Meta's own Embedded Signup Helper generates a POST + JSON body with an
+                # explicit grant_type for this exchange, not the GET-with-query-params form the
+                # legacy curl examples show — omitting grant_type here reproduced OAuthException
+                # 36008 regardless of what redirect_uri was sent.
+                json={
+                    "client_id": self._app_id,
+                    "client_secret": self._app_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
             )
         if r.status_code != 200:
             raise MetaGraphError("token exchange failed", r)

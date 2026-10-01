@@ -1,0 +1,2 @@
+aws_region        = "us-east-1"
+state_bucket_name = "wa-platform-tfstate-<your account id or a random suffix>"
